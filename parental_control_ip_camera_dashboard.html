@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ParentGuard & IP Camera Control Center</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PeerJS for WebRTC Video Streaming -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+    <!-- Inter Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+        }
+        .glow-red {
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.4);
+        }
+        .glow-green {
+            box-shadow: 0 0 15px rgba(34, 197, 94, 0.4);
+        }
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col justify-between antialiased">
+
+    <!-- TOP NAVBAR -->
+    <header class="w-full glass-panel border-b border-slate-700/50 sticky top-0 z-40 px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center space-x-3">
+            <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-violet-500 flex items-center justify-center text-white font-bold text-xl shadow-lg">
+                <i class="fa-solid fa-shield-halved"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-base md:text-lg text-white leading-tight">ParentGuard Pro</h1>
+                <p class="text-xs text-slate-400">IP CCTV & Remote App Control Dashboard</p>
+            </div>
+        </div>
+        <div class="flex items-center space-x-2">
+            <span class="inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <span class="w-2 h-2 mr-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                System Active
+            </span>
+            <button onclick="togglePinModal()" class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-600 rounded-lg text-xs font-semibold text-slate-200 transition">
+                <i class="fa-solid fa-lock mr-1"></i> Security PIN
+            </button>
+        </div>
+    </header>
+
+    <!-- MAIN DASHBOARD CONTENT -->
+    <main class="max-w-7xl w-full mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6 flex-grow">
+
+        <!-- LEFT COLUMN: LIVE IP CAMERA / CCTV MONITOR (7 Cols) -->
+        <section class="lg:col-span-7 flex flex-col space-y-4">
+            <div class="glass-panel rounded-2xl p-5 shadow-xl flex-grow flex flex-col justify-between border border-slate-700/60">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-video text-rose-500 text-lg"></i>
+                        <h2 class="font-semibold text-lg text-white">Live CCTV Camera Monitor</h2>
+                    </div>
+                    <span id="camStatusBadge" class="text-xs px-2.5 py-1 rounded-md bg-rose-500/20 text-rose-300 font-mono">
+                        DISCONNECTED
+                    </span>
+                </div>
+
+                <!-- VIDEO PLAYER CONTAINER -->
+                <div class="relative w-full aspect-video bg-black rounded-xl overflow-hidden flex items-center justify-center border border-slate-800 shadow-inner group">
+                    <video id="remoteVideo" autoplay playsinline muted class="w-full h-full object-cover hidden"></video>
+
+                    <!-- OVERLAY MESSAGES -->
+                    <div id="videoPlaceholder" class="text-center p-6 flex flex-col items-center">
+                        <div class="w-16 h-16 rounded-full bg-slate-800 flex items-center justify-center mb-3 text-slate-500 text-2xl">
+                            <i class="fa-solid fa-camera-rotate"></i>
+                        </div>
+                        <h3 class="font-medium text-slate-300 mb-1">Waiting for Camera Feed</h3>
+                        <p class="text-xs text-slate-400 max-w-xs mb-4">Open this URL on your second mobile device to broadcast video live into this main dashboard.</p>
+                        <button onclick="activateLocalCamera()" class="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs font-semibold transition flex items-center shadow-md">
+                            <i class="fa-solid fa-broadcast-tower mr-2"></i> Start Broadcast (Camera Mode)
+                        </button>
+                    </div>
+
+                    <!-- CAMERA CONTROL OVERLAY BUTTONS -->
+                    <div class="absolute bottom-3 left-3 right-3 flex justify-between items-center opacity-0 group-hover:opacity-100 transition-opacity bg-slate-900/80 backdrop-blur-md p-2 rounded-lg text-xs">
+                        <div class="text-slate-300 font-mono">ID: <span id="peerIdDisplay">prism-cam-stream-chmiel-07</span></div>
+                        <div class="flex space-x-2">
+                            <button onclick="toggleMuteVideo()" class="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300">
+                                <i class="fa-solid fa-volume-xmark"></i>
+                            </button>
+                            <button onclick="requestFullscreen()" class="p-1.5 bg-slate-800 hover:bg-slate-700 rounded text-slate-300">
+                                <i class="fa-solid fa-expand"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- QUICK CAMERA CONTROLS -->
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
+                    <button onclick="requestWakeLock()" class="p-3 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-left border border-slate-700 transition">
+                        <i class="fa-solid fa-sun text-amber-400 mb-1 block text-lg"></i>
+                        <span class="text-xs font-semibold block text-slate-200">Keep Alive</span>
+                        <span class="text-[10px] text-slate-400">Prevent Screen Sleep</span>
+                    </button>
+                    <button onclick="triggerRemoteSiren()" class="p-3 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-left border border-slate-700 transition">
+                        <i class="fa-solid fa-bell text-rose-500 mb-1 block text-lg"></i>
+                        <span class="text-xs font-semibold block text-slate-200">Sound Siren</span>
+                        <span class="text-[10px] text-slate-400">Play Alert Noise</span>
+                    </button>
+                    <button onclick="toggleLockoutScreen()" class="p-3 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-left border border-slate-700 transition">
+                        <i class="fa-solid fa-ban text-orange-400 mb-1 block text-lg"></i>
+                        <span class="text-xs font-semibold block text-slate-200">Lockout Screen</span>
+                        <span class="text-[10px] text-slate-400">Block Child Access</span>
+                    </button>
+                    <button onclick="clearActivityLogs()" class="p-3 bg-slate-800/80 hover:bg-slate-700 rounded-xl text-left border border-slate-700 transition">
+                        <i class="fa-solid fa-clock-rotate-left text-sky-400 mb-1 block text-lg"></i>
+                        <span class="text-xs font-semibold block text-slate-200">Reset Logs</span>
+                        <span class="text-[10px] text-slate-400">Clear History</span>
+                    </button>
+                </div>
+            </div>
+        </section>
+
+        <!-- RIGHT COLUMN: APP LOCKER & SCREEN TIME CONTROLLER (5 Cols) -->
+        <section class="lg:col-span-5 flex flex-col space-y-4">
+
+            <!-- APP LOCK CONTROL BOARD -->
+            <div class="glass-panel rounded-2xl p-5 shadow-xl border border-slate-700/60">
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-2">
+                        <i class="fa-solid fa-gamepad text-indigo-400 text-lg"></i>
+                        <h2 class="font-semibold text-lg text-white">App & Game Locker</h2>
+                    </div>
+                    <button onclick="toggleLockAllApps()" id="masterLockBtn" class="px-3 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold transition">
+                        Lock All Games
+                    </button>
+                </div>
+
+                <!-- APP LIST TOGGLES -->
+                <div class="space-y-3">
+                    <!-- Mobile Legends -->
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-sm">
+                                <i class="fa-solid fa-dragon"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-slate-200">Mobile Legends</h4>
+                                <p class="text-[11px] text-slate-400">MOBA Game</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked onchange="toggleAppLock('Mobile Legends', this)" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Roblox -->
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-lg bg-rose-500/20 text-rose-400 flex items-center justify-center font-bold text-sm">
+                                <i class="fa-solid fa-cube"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-slate-200">Roblox</h4>
+                                <p class="text-[11px] text-slate-400">Online Sandbox</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked onchange="toggleAppLock('Roblox', this)" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- Call of Duty Mobile -->
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-sm">
+                                <i class="fa-solid fa-crosshairs"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-slate-200">COD Mobile</h4>
+                                <p class="text-[11px] text-slate-400">FPS Shooter</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" checked onchange="toggleAppLock('COD Mobile', this)" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+
+                    <!-- YouTube / TikTok -->
+                    <div class="flex items-center justify-between p-3 rounded-xl bg-slate-800/60 border border-slate-700/50">
+                        <div class="flex items-center space-x-3">
+                            <div class="w-9 h-9 rounded-lg bg-sky-500/20 text-sky-400 flex items-center justify-center font-bold text-sm">
+                                <i class="fa-brands fa-youtube"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-medium text-slate-200">YouTube & TikTok</h4>
+                                <p class="text-[11px] text-slate-400">Video Apps</p>
+                            </div>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" onchange="toggleAppLock('YouTube & TikTok', this)" class="sr-only peer">
+                            <div class="w-11 h-6 bg-slate-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-rose-500"></div>
+                        </label>
+                    </div>
+                </div>
+
+                <!-- SCREEN TIME COUNTDOWN SIMULATION -->
+                <div class="mt-5 pt-4 border-t border-slate-700/50">
+                    <div class="flex justify-between items-center mb-2">
+                        <span class="text-xs font-semibold text-slate-300">Daily Screen Time Limit</span>
+                        <span id="timerDisplay" class="font-mono text-xs font-bold text-amber-400">01:30:00 Remaining</span>
+                    </div>
+                    <div class="w-full bg-slate-700 h-2 rounded-full overflow-hidden">
+                        <div id="timerBar" class="bg-amber-400 h-full w-3/4 transition-all duration-500"></div>
+                    </div>
+                    <div class="flex justify-between mt-3">
+                        <button onclick="adjustScreenTime(-15)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">-15 Mins</button>
+                        <button onclick="adjustScreenTime(15)" class="px-2.5 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded text-xs border border-slate-700">+15 Mins</button>
+                        <button onclick="lockScreenTimeNow()" class="px-2.5 py-1 bg-rose-500/20 text-rose-300 hover:bg-rose-500/30 rounded text-xs border border-rose-500/30 font-semibold">Lock Device Now</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- LIVE ACTIVITY AUDIT LOG -->
+            <div class="glass-panel rounded-2xl p-5 shadow-xl border border-slate-700/60 flex-grow">
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="font-semibold text-sm text-slate-200">Security & Activity Log</h3>
+                    <span class="text-[10px] text-slate-400 font-mono">Real-time Events</span>
+                </div>
+                <div id="activityLogs" class="space-y-2 max-h-48 overflow-y-auto pr-1 text-xs font-mono">
+                    <div class="p-2 rounded bg-slate-800/40 text-slate-400 border-l-2 border-emerald-500">
+                        <span class="text-slate-500">[System]</span> ParentGuard Dashboard initialized.
+                    </div>
+                    <div class="p-2 rounded bg-slate-800/40 text-slate-400 border-l-2 border-indigo-500">
+                        <span class="text-slate-500">[CCTV]</span> Listening for camera stream peer ID.
+                    </div>
+                </div>
+            </div>
+
+        </section>
+
+    </main>
+
+    <!-- FOOTER STATUS BAR -->
+    <footer class="glass-panel border-t border-slate-800 py-3 px-4 text-center text-xs text-slate-400">
+        <p>ParentGuard Security & IP Camera System &bull; Keeping your devices safe & children balanced.</p>
+    </footer>
+
+    <!-- PIN SECURITY MODAL -->
+    <div id="pinModal" class="fixed inset-0 bg-slate-950/80 backdrop-blur-md hidden z-50 flex items-center justify-center p-4">
+        <div class="glass-panel bg-slate-900 rounded-2xl p-6 max-w-xs w-full border border-slate-700 text-center shadow-2xl">
+            <div class="w-12 h-12 rounded-full bg-rose-500/20 text-rose-400 flex items-center justify-center mx-auto mb-3 text-xl">
+                <i class="fa-solid fa-lock"></i>
+            </div>
+            <h3 class="text-lg font-bold text-white mb-1">Enter Security PIN</h3>
+            <p class="text-xs text-slate-400 mb-4">Required to modify locked apps & system settings. (Default PIN: <span class="text-amber-400 font-mono">1234</span>)</p>
+
+            <input type="password" id="pinCodeInput" maxlength="4" placeholder="••••" class="w-full text-center tracking-widest text-2xl font-mono py-2 bg-slate-800 border border-slate-700 rounded-xl text-white focus:outline-none focus:border-indigo-500 mb-4">
+
+            <div class="grid grid-cols-2 gap-2">
+                <button onclick="togglePinModal()" class="py-2 bg-slate-800 hover:bg-slate-700 rounded-xl text-xs text-slate-300 font-medium">Cancel</button>
+                <button onclick="verifyPinCode()" class="py-2 bg-indigo-600 hover:bg-indigo-500 rounded-xl text-xs text-white font-semibold">Verify PIN</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FULLSCREEN EMERGENCY LOCKOUT OVERLAY (FOR CHILD'S DEVICE SIMULATION) -->
+    <div id="childLockoutOverlay" class="fixed inset-0 bg-black/95 z-50 hidden flex flex-col items-center justify-center text-center p-6">
+        <div class="w-20 h-20 rounded-full bg-rose-600/20 text-rose-500 flex items-center justify-center mb-6 text-4xl animate-bounce">
+            <i class="fa-solid fa-shield-cat"></i>
+        </div>
+        <h2 class="text-2xl md:text-3xl font-extrabold text-white mb-2">Oras na para Magpahinga!</h2>
+        <p class="text-sm md:text-base text-slate-400 max-w-md mb-6">Naka-lock ang device na ito sa utos ng iyong magulang. Mag-aral o matulog muna bago maglaro ulit.</p>
+        <button onclick="unlockChildScreen()" class="px-6 py-3 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl text-xs font-mono border border-slate-700">
+            [ Parent Unlock Screen ]
+        </button>
+    </div>
+
+    <!-- JAVASCRIPT CONTROLLERS -->
+    <script>
+        const ROOM_ID = 'prism-cam-stream-chmiel-07';
+        let securityPin = '1234';
+        let peer = null;
+        let screenTimeMinutes = 90;
+        let wakeLockObj = null;
+
+        // Initialize PeerJS
+        window.addEventListener('load', () => {
+            initPeerConnection();
+            addLog("System initialized. Monitoring actively.");
+        });
+
+        function initPeerConnection() {
+            peer = new Peer(ROOM_ID);
+
+            peer.on('open', (id) => {
+                document.getElementById('camStatusBadge').innerText = "RECEIVER ACTIVE";
+                document.getElementById('camStatusBadge').className = "text-xs px-2.5 py-1 rounded-md bg-emerald-500/20 text-emerald-300 font-mono";
+                addLog("Receiver mode active. Waiting for camera stream...");
+            });
+
+            peer.on('call', (call) => {
+                call.answer();
+                call.on('stream', (remoteStream) => {
+                    const video = document.getElementById('remoteVideo');
+                    video.srcObject = remoteStream;
+                    video.classList.remove('hidden');
+                    document.getElementById('videoPlaceholder').classList.add('hidden');
+                    
+                    document.getElementById('camStatusBadge').innerText = "LIVE STREAMING";
+                    document.getElementById('camStatusBadge').className = "text-xs px-2.5 py-1 rounded-md bg-rose-500/20 text-rose-400 font-mono glow-red";
+                    addLog("Live video feed connected successfully!");
+                });
+            });
+
+            peer.on('error', (err) => {
+                if (err.type === 'unavailable-id') {
+                    addLog("Camera mode available. Tap 'Start Broadcast'.");
+                }
+            });
+        }
+
+        // Camera Mode Broadcast Initiator
+        async function activateLocalCamera() {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: "environment" },
+                    audio: false
+                });
+
+                const video = document.getElementById('remoteVideo');
+                video.srcObject = stream;
+                video.classList.remove('hidden');
+                document.getElementById('videoPlaceholder').classList.add('hidden');
+
+                const myPeer = new Peer();
+                myPeer.on('open', () => {
+                    myPeer.call(ROOM_ID, stream);
+                    addLog("Broadcasting camera feed to Prism Live / Dashboard.");
+                });
+
+                // Invisible Audio Hack for background persistence
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const osc = audioCtx.createOscillator();
+                const gain = audioCtx.createGain();
+                gain.gain.value = 0.0001;
+                osc.connect(gain);
+                gain.connect(audioCtx.destination);
+                osc.start();
+
+            } catch (err) {
+                alert("Hindi ma-access ang camera: " + err.message);
+            }
+        }
+
+        // App Lock Controls
+        function toggleAppLock(appName, element) {
+            const isLocked = element.checked;
+            addLog(`${appName} was ${isLocked ? 'LOCKED 🔒' : 'UNLOCKED 🔓'}`);
+        }
+
+        function toggleLockAllApps() {
+            const checkboxes = document.querySelectorAll('input[type="checkbox"]');
+            const masterBtn = document.getElementById('masterLockBtn');
+            const shouldLock = masterBtn.innerText.includes("Lock");
+
+            checkboxes.forEach(cb => {
+                cb.checked = shouldLock;
+            });
+
+            masterBtn.innerText = shouldLock ? "Unlock All Games" : "Lock All Games";
+            masterBtn.className = shouldLock 
+                ? "px-3 py-1 bg-emerald-600/80 hover:bg-emerald-600 text-white rounded-lg text-xs font-semibold transition"
+                : "px-3 py-1 bg-rose-600/80 hover:bg-rose-600 text-white rounded-lg text-xs font-semibold transition";
+
+            addLog(shouldLock ? "ALL Games & Media Apps LOCKED!" : "ALL Games UNLOCKED.");
+        }
+
+        // Screen Time Adjuster
+        function adjustScreenTime(mins) {
+            screenTimeMinutes = Math.max(0, screenTimeMinutes + mins);
+            updateTimerDisplay();
+            addLog(`Screen time adjusted by ${mins > 0 ? '+' : ''}${mins} mins.`);
+        }
+
+        function updateTimerDisplay() {
+            const hrs = Math.floor(screenTimeMinutes / 60);
+            const mins = screenTimeMinutes % 60;
+            document.getElementById('timerDisplay').innerText = `${String(hrs).padStart(2, '0')}:${String(mins).padStart(2, '0')}:00 Remaining`;
+            document.getElementById('timerBar').style.width = `${Math.min(100, (screenTimeMinutes / 120) * 100)}%`;
+        }
+
+        function lockScreenTimeNow() {
+            screenTimeMinutes = 0;
+            updateTimerDisplay();
+            toggleLockoutScreen();
+            addLog("EMERGENCY: Device Screen Time Locked Instantly!");
+        }
+
+        // Remote Siren Alert Trigger
+        function triggerRemoteSiren() {
+            const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(800, audioCtx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.5);
+
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.8);
+
+            addLog("SIREN: Alert sound played remotely!");
+        }
+
+        // Screen Lockout Overlay Toggle
+        function toggleLockoutScreen() {
+            document.getElementById('childLockoutOverlay').classList.remove('hidden');
+        }
+
+        function unlockChildScreen() {
+            togglePinModal();
+            document.getElementById('childLockoutOverlay').classList.add('hidden');
+        }
+
+        // WakeLock Feature
+        async function requestWakeLock() {
+            try {
+                if ('wakeLock' in navigator) {
+                    wakeLockObj = await navigator.wakeLock.request('screen');
+                    addLog("WakeLock Active: Screen will remain awake.");
+                }
+            } catch (err) {
+                console.log(err);
+            }
+        }
+
+        // Logs Manager
+        function addLog(msg) {
+            const container = document.getElementById('activityLogs');
+            const time = new Date().toLocaleTimeString();
+            const logEntry = document.createElement('div');
+            logEntry.className = "p-2 rounded bg-slate-800/40 text-slate-300 border-l-2 border-indigo-500";
+            logEntry.innerHTML = `<span class="text-slate-500">[${time}]</span> ${msg}`;
+            container.prepend(logEntry);
+        }
+
+        function clearActivityLogs() {
+            document.getElementById('activityLogs').innerHTML = '';
+            addLog("Activity logs reset.");
+        }
+
+        // PIN Security Dialog
+        function togglePinModal() {
+            const modal = document.getElementById('pinModal');
+            modal.classList.toggle('hidden');
+        }
+
+        function verifyPinCode() {
+            const val = document.getElementById('pinCodeInput').value;
+            if (val === securityPin) {
+                alert("PIN Verified Successfully!");
+                togglePinModal();
+                document.getElementById('pinCodeInput').value = '';
+                addLog("Security PIN Verified.");
+            } else {
+                alert("Incorrect PIN! Default PIN is 1234.");
+            }
+        }
+
+        function toggleMuteVideo() {
+            const v = document.getElementById('remoteVideo');
+            v.muted = !v.muted;
+        }
+
+        function requestFullscreen() {
+            const v = document.getElementById('remoteVideo');
+            if (v.requestFullscreen) v.requestFullscreen();
+        }
+    </script>
+</body>
+</html>
